@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# This is the utility to install muparser for the PACS examples
+# This is the utility to install pybind11 in the Example tree
 #
 # create the build directory
 mkdir -p build
