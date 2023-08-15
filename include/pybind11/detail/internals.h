@@ -123,7 +123,8 @@ inline void tls_replace_value(PYBIND11_TLS_KEY_REF key, void *value) {
 // libstdc++, this doesn't happen: equality and the type_index hash are based on the type name,
 // which works.  If not under a known-good stl, provide our own name-based hash and equality
 // functions that use the type name.
-#if defined(__GLIBCXX__)
+#if (PYBIND11_INTERNALS_VERSION <= 4 && defined(__GLIBCXX__))                                     \
+    || (PYBIND11_INTERNALS_VERSION >= 5 && !defined(_LIBCPP_VERSION))
 inline bool same_type(const std::type_info &lhs, const std::type_info &rhs) { return lhs == rhs; }
 using type_hash = std::hash<std::type_index>;
 using type_equal_to = std::equal_to<std::type_index>;
@@ -351,7 +352,7 @@ inline bool raise_err(PyObject *exc_type, const char *msg) {
         raise_from(exc_type, msg);
         return true;
     }
-    PyErr_SetString(exc_type, msg);
+    set_error(exc_type, msg);
     return false;
 }
 

@@ -39,8 +39,11 @@ def test_array(doc):
     assert m.load_array(lst)
     assert m.load_array(tuple(lst))
 
-    assert doc(m.cast_array) == "cast_array() -> List[int[2]]"
-    assert doc(m.load_array) == "load_array(arg0: List[int[2]]) -> bool"
+    assert doc(m.cast_array) == "cast_array() -> Annotated[List[int], FixedSize(2)]"
+    assert (
+        doc(m.load_array)
+        == "load_array(arg0: Annotated[List[int], FixedSize(2)]) -> bool"
+    )
 
 
 def test_valarray(doc):
@@ -367,7 +370,7 @@ def test_issue_1561():
     """check fix for issue #1561"""
     bar = m.Issue1561Outer()
     bar.list = [m.Issue1561Inner("bar")]
-    bar.list
+    assert bar.list
     assert bar.list[0].data == "bar"
 
 

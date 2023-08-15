@@ -43,6 +43,8 @@ main_headers = {
     "include/pybind11/pytypes.h",
     "include/pybind11/stl.h",
     "include/pybind11/stl_bind.h",
+    "include/pybind11/type_caster_pyobject_ptr.h",
+    "include/pybind11/typing.h",
 }
 
 detail_headers = {
@@ -56,6 +58,7 @@ detail_headers = {
 }
 
 eigen_headers = {
+    "include/pybind11/eigen/common.h",
     "include/pybind11/eigen/matrix.h",
     "include/pybind11/eigen/tensor.h",
 }
@@ -110,6 +113,7 @@ sdist_files = {
     "MANIFEST.in",
     "README.rst",
     "PKG-INFO",
+    "SECURITY.md",
 }
 
 local_sdist_files = {
