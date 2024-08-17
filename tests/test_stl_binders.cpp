@@ -192,6 +192,16 @@ TEST_SUBMODULE(stl_binders, m) {
     py::bind_map<std::unordered_map<std::string, double const>>(m,
                                                                 "UnorderedMapStringDoubleConst");
 
+    // test_map_view_types
+    py::bind_map<std::map<std::string, float>>(m, "MapStringFloat");
+    py::bind_map<std::unordered_map<std::string, float>>(m, "UnorderedMapStringFloat");
+
+    py::bind_map<std::map<std::pair<double, int>, int32_t>>(m, "MapPairDoubleIntInt32");
+    py::bind_map<std::map<std::pair<double, int>, int64_t>>(m, "MapPairDoubleIntInt64");
+
+    py::bind_map<std::map<int, py::object>>(m, "MapIntObject");
+    py::bind_map<std::map<std::string, py::object>>(m, "MapStringObject");
+
     py::class_<E_nc>(m, "ENC").def(py::init<int>()).def_readwrite("value", &E_nc::value);
 
     // test_noncopyable_containers
@@ -260,7 +270,6 @@ TEST_SUBMODULE(stl_binders, m) {
     PYBIND11_NUMPY_DTYPE(VStruct, w, x, y, z);
     py::class_<VStruct>(m, "VStruct").def_readwrite("x", &VStruct::x);
     py::bind_vector<std::vector<VStruct>>(m, "VectorStruct", py::buffer_protocol());
-    m.def("get_vectorstruct", [] {
-        return std::vector<VStruct>{{false, 5, 3.0, true}, {true, 30, -1e4, false}};
-    });
+    m.def("get_vectorstruct",
+          [] { return std::vector<VStruct>{{false, 5, 3.0, true}, {true, 30, -1e4, false}}; });
 }
