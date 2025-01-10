@@ -4,11 +4,11 @@
 
 #pragma once
 
-#include "../pybind11.h"
-#include "../detail/common.h"
-#include "../detail/descr.h"
-#include "../cast.h"
-#include "../pytypes.h"
+#include <pybind11/cast.h>
+#include <pybind11/detail/common.h>
+#include <pybind11/detail/descr.h>
+#include <pybind11/pybind11.h>
+#include <pybind11/pytypes.h>
 
 #include <string>
 
@@ -107,6 +107,8 @@ public:
     }
 
     PYBIND11_TYPE_CASTER(T, const_name("os.PathLike"));
+    static constexpr auto arg_name = const_name("Union[os.PathLike, str, bytes]");
+    static constexpr auto return_name = const_name("Path");
 };
 
 #endif // PYBIND11_HAS_FILESYSTEM || defined(PYBIND11_HAS_EXPERIMENTAL_FILESYSTEM)

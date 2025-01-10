@@ -129,18 +129,23 @@ endif()
 set(PYBIND11_HEADERS
     include/pybind11/detail/class.h
     include/pybind11/detail/common.h
+    include/pybind11/detail/cpp_conduit.h
     include/pybind11/detail/descr.h
     include/pybind11/detail/init.h
     include/pybind11/detail/internals.h
     include/pybind11/detail/type_caster_base.h
     include/pybind11/detail/typeid.h
     include/pybind11/detail/value_and_holder.h
+    include/pybind11/detail/exception_translation.h
     include/pybind11/attr.h
     include/pybind11/buffer_info.h
     include/pybind11/cast.h
     include/pybind11/chrono.h
     include/pybind11/common.h
     include/pybind11/complex.h
+    include/pybind11/conduit/pybind11_conduit_v1.h
+    include/pybind11/conduit/pybind11_platform_abi_id.h
+    include/pybind11/conduit/wrap_include_python_h.h
     include/pybind11/options.h
     include/pybind11/eigen.h
     include/pybind11/eigen/common.h
@@ -160,7 +165,8 @@ set(PYBIND11_HEADERS
     include/pybind11/stl_bind.h
     include/pybind11/stl/filesystem.h
     include/pybind11/type_caster_pyobject_ptr.h
-    include/pybind11/typing.h)
+    include/pybind11/typing.h
+    include/pybind11/warnings.h)
 
 # Compare with grep and warn if mismatched
 if(PYBIND11_MASTER_PROJECT)
