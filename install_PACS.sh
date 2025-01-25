@@ -11,7 +11,7 @@ cd build/
 # run cmake
 #
 # this creates the dynamic libraries and optimised code
-cmake -D CMAKE_BUILD_TYPE=Release -D CMAKE_INSTALL_PREFIX=../../../Examples/ ../
+cmake -D PYBIND11_TEST=OFF -D PYBIND11_INSTALL=ON -D CMAKE_BUILD_TYPE=Release -D CMAKE_INSTALL_PREFIX=../../../Examples/ ../
 
 # uncomment this line (and comment the previous one)
 #if you want to debug, this also creates the static libraries
@@ -19,7 +19,7 @@ cmake -D CMAKE_BUILD_TYPE=Release -D CMAKE_INSTALL_PREFIX=../../../Examples/ ../
 #cmake -D CMAKE_BUILD_TYPE=Debug -D CMAKE_INSTALL_PREFIX=../../../Examples/ ../
 
 #compile
-make -j 2
+make
 #install
 make install
 # remove build directory
