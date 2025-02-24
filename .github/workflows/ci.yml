@@ -39,6 +39,7 @@ jobs:
         - 'pypy-3.8'
         - 'pypy-3.9'
         - 'pypy-3.10'
+        - 'pypy-3.11'
         - 'graalpy-24.1'
 
         # Items in here will either be added to the build matrix (if not
@@ -1124,7 +1125,7 @@ jobs:
         uses: jwlawson/actions-setup-cmake@v2.0
 
       - name: Install ninja-build tool
-        uses: seanmiddleditch/gha-setup-ninja@v5
+        uses: seanmiddleditch/gha-setup-ninja@v6
 
       - name: Run pip installs
         run: |

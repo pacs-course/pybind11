@@ -14,13 +14,13 @@
 #    error "PYTHON < 3.8 IS UNSUPPORTED. pybind11 v2.13 was the last to support Python 3.7."
 #endif
 
-#define PYBIND11_VERSION_MAJOR 2
-#define PYBIND11_VERSION_MINOR 14
+#define PYBIND11_VERSION_MAJOR 3
+#define PYBIND11_VERSION_MINOR 0
 #define PYBIND11_VERSION_PATCH 0.dev1
 
 // Similar to Python's convention: https://docs.python.org/3/c-api/apiabiversion.html
 // Additional convention: 0xD = dev
-#define PYBIND11_VERSION_HEX 0x020E00D1
+#define PYBIND11_VERSION_HEX 0x030000D1
 
 // Define some generic pybind11 helper macros for warning management.
 //
@@ -1254,6 +1254,11 @@ constexpr
 // who are writing (as opposed to merely using) libraries that use pybind11.
 #if !defined(PYBIND11_DETAILED_ERROR_MESSAGES) && !defined(NDEBUG)
 #    define PYBIND11_DETAILED_ERROR_MESSAGES
+#endif
+
+// CPython 3.11+ provides Py_TPFLAGS_MANAGED_DICT, but PyPy3.11 does not, see PR #5508.
+#if PY_VERSION_HEX < 0x030B0000 || defined(PYPY_VERSION)
+#    define PYBIND11_BACKWARD_COMPATIBILITY_TP_DICTOFFSET
 #endif
 
 PYBIND11_NAMESPACE_END(detail)

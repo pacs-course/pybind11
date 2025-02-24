@@ -52,10 +52,10 @@ def test_from_iterable(pytype, from_iter_func):
 
 def test_iterable(doc):
     assert doc(m.get_iterable) == "get_iterable() -> Iterable"
-    lins = [1, 2, 3]
-    i = m.get_first_item_from_iterable(lins)
+    lst = [1, 2, 3]
+    i = m.get_first_item_from_iterable(lst)
     assert i == 1
-    i = m.get_second_item_from_iterable(lins)
+    i = m.get_second_item_from_iterable(lst)
     assert i == 2
 
 
@@ -67,13 +67,13 @@ def test_list(capture, doc):
     assert m.list_no_args() == []
     assert m.list_ssize_t() == []
     assert m.list_size_t() == []
-    lins = [1, 2]
-    m.list_insert_ssize_t(lins)
-    assert lins == [1, 83, 2]
-    m.list_insert_size_t(lins)
-    assert lins == [1, 83, 2, 57]
-    m.list_clear(lins)
-    assert lins == []
+    lst = [1, 2]
+    m.list_insert_ssize_t(lst)
+    assert lst == [1, 83, 2]
+    m.list_insert_size_t(lst)
+    assert lst == [1, 83, 2, 57]
+    m.list_clear(lst)
+    assert lst == []
 
     with capture:
         lst = m.get_list()
@@ -1044,6 +1044,39 @@ def test_literal(doc):
         doc(m.annotate_literal)
         == 'annotate_literal(arg0: Literal[26, 0x1A, "hello world", b"hello world", u"hello world", True, Color.RED, None]) -> object'
     )
+    # The characters !, @, %, {, } and -> are used in the signature parser as special characters, but Literal should escape those for the parser to work.
+    assert (
+        doc(m.identity_literal_exclamation)
+        == 'identity_literal_exclamation(arg0: Literal["!"]) -> Literal["!"]'
+    )
+    assert (
+        doc(m.identity_literal_at)
+        == 'identity_literal_at(arg0: Literal["@"]) -> Literal["@"]'
+    )
+    assert (
+        doc(m.identity_literal_percent)
+        == 'identity_literal_percent(arg0: Literal["%"]) -> Literal["%"]'
+    )
+    assert (
+        doc(m.identity_literal_curly_open)
+        == 'identity_literal_curly_open(arg0: Literal["{"]) -> Literal["{"]'
+    )
+    assert (
+        doc(m.identity_literal_curly_close)
+        == 'identity_literal_curly_close(arg0: Literal["}"]) -> Literal["}"]'
+    )
+    assert (
+        doc(m.identity_literal_arrow_with_io_name)
+        == 'identity_literal_arrow_with_io_name(arg0: Literal["->"], arg1: Union[float, int]) -> Literal["->"]'
+    )
+    assert (
+        doc(m.identity_literal_arrow_with_callable)
+        == 'identity_literal_arrow_with_callable(arg0: Callable[[Literal["->"], Union[float, int]], float]) -> Callable[[Literal["->"], Union[float, int]], float]'
+    )
+    assert (
+        doc(m.identity_literal_all_special_chars)
+        == 'identity_literal_all_special_chars(arg0: Literal["!@!!->{%}"]) -> Literal["!@!!->{%}"]'
+    )
 
 
 @pytest.mark.skipif(
@@ -1195,15 +1228,22 @@ def test_final_annotation() -> None:
 
 def test_arg_return_type_hints(doc):
     assert doc(m.half_of_number) == "half_of_number(arg0: Union[float, int]) -> float"
+    assert (
+        doc(m.half_of_number_convert)
+        == "half_of_number_convert(x: Union[float, int]) -> float"
+    )
+    assert (
+        doc(m.half_of_number_noconvert) == "half_of_number_noconvert(x: float) -> float"
+    )
     assert m.half_of_number(2.0) == 1.0
     assert m.half_of_number(2) == 1.0
     assert m.half_of_number(0) == 0
     assert isinstance(m.half_of_number(0), float)
     assert not isinstance(m.half_of_number(0), int)
-    # std::vector<T> should use fallback type (complex is not really useful but just used for testing)
+    # std::vector<T>
     assert (
         doc(m.half_of_number_vector)
-        == "half_of_number_vector(arg0: list[complex]) -> list[complex]"
+        == "half_of_number_vector(arg0: list[Union[float, int]]) -> list[float]"
     )
     # Tuple<T, T>
     assert (
@@ -1244,6 +1284,21 @@ def test_arg_return_type_hints(doc):
     assert (
         doc(m.identity_iterator)
         == "identity_iterator(arg0: Iterator[Union[float, int]]) -> Iterator[float]"
+    )
+    # Callable<R(A)> identity
+    assert (
+        doc(m.identity_callable)
+        == "identity_callable(arg0: Callable[[Union[float, int]], float]) -> Callable[[Union[float, int]], float]"
+    )
+    # Callable<R(...)> identity
+    assert (
+        doc(m.identity_callable_ellipsis)
+        == "identity_callable_ellipsis(arg0: Callable[..., float]) -> Callable[..., float]"
+    )
+    # Nested Callable<R(A)> identity
+    assert (
+        doc(m.identity_nested_callable)
+        == "identity_nested_callable(arg0: Callable[[Callable[[Union[float, int]], float]], Callable[[Union[float, int]], float]]) -> Callable[[Callable[[Union[float, int]], float]], Callable[[Union[float, int]], float]]"
     )
     # Callable<R(A)>
     assert (
