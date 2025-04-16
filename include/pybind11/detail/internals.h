@@ -9,14 +9,11 @@
 
 #pragma once
 
-#include "common.h"
-
-#if defined(PYBIND11_SIMPLE_GIL_MANAGEMENT)
-#    include <pybind11/gil.h>
-#endif
-
 #include <pybind11/conduit/pybind11_platform_abi_id.h>
+#include <pybind11/gil_simple.h>
 #include <pybind11/pytypes.h>
+
+#include "common.h"
 
 #include <exception>
 #include <mutex>
@@ -37,11 +34,11 @@
 /// further ABI-incompatible changes may be made before the ABI is officially
 /// changed to the new version.
 #ifndef PYBIND11_INTERNALS_VERSION
-#    define PYBIND11_INTERNALS_VERSION 6
+#    define PYBIND11_INTERNALS_VERSION 9
 #endif
 
-#if PYBIND11_INTERNALS_VERSION < 6
-#    error "PYBIND11_INTERNALS_VERSION 6 is the minimum for all platforms for pybind11v3."
+#if PYBIND11_INTERNALS_VERSION < 9
+#    error "PYBIND11_INTERNALS_VERSION 9 is the minimum for all platforms for pybind11v3."
 #endif
 
 PYBIND11_NAMESPACE_BEGIN(PYBIND11_NAMESPACE)
@@ -190,9 +187,7 @@ struct internals {
     // Unused if PYBIND11_SIMPLE_GIL_MANAGEMENT is defined:
     PyInterpreterState *istate = nullptr;
 
-    // Note that we have to use a std::string to allocate memory to ensure a unique address
-    // We want unique addresses since we use pointer equality to compare function records
-    std::string function_record_capsule_name = internals_function_record_capsule_name;
+    type_map<PyObject *> native_enum_type_map;
 
     internals() = default;
     internals(const internals &other) = delete;
@@ -211,6 +206,17 @@ struct internals {
     }
 };
 
+// For backwards compatibility (i.e. #ifdef guards):
+#define PYBIND11_HAS_INTERNALS_WITH_SMART_HOLDER_SUPPORT
+
+enum class holder_enum_t : uint8_t {
+    undefined,
+    std_unique_ptr, // Default, lacking interop with std::shared_ptr.
+    std_shared_ptr, // Lacking interop with std::unique_ptr.
+    smart_holder,   // Full std::unique_ptr / std::shared_ptr interop.
+    custom_holder,
+};
+
 /// Additional type information which does not fit into the PyTypeObject.
 /// Changes to this struct also require bumping `PYBIND11_INTERNALS_VERSION`.
 struct type_info {
@@ -226,6 +232,7 @@ struct type_info {
     buffer_info *(*get_buffer)(PyObject *, void *) = nullptr;
     void *get_buffer_data = nullptr;
     void *(*module_local_load)(PyObject *, const type_info *) = nullptr;
+    holder_enum_t holder_enum_v = holder_enum_t::undefined;
     /* A simple type never occurs as a (direct or indirect) parent
      * of a class that makes use of multiple inheritance.
      * A type can be simple even if it has non-simple ancestors as long as it has no descendants.
@@ -233,8 +240,6 @@ struct type_info {
     bool simple_type : 1;
     /* True if there is no multiple inheritance in this type's inheritance tree */
     bool simple_ancestors : 1;
-    /* for base vs derived holder_type checks */
-    bool default_holder : 1;
     /* true if this is a type registered with py::module_local */
     bool module_local : 1;
 };
@@ -417,19 +422,7 @@ PYBIND11_NOINLINE internals &get_internals() {
         return **internals_pp;
     }
 
-#if defined(PYBIND11_SIMPLE_GIL_MANAGEMENT)
-    gil_scoped_acquire gil;
-#else
-    // Ensure that the GIL is held since we will need to make Python calls.
-    // Cannot use py::gil_scoped_acquire here since that constructor calls get_internals.
-    struct gil_scoped_acquire_local {
-        gil_scoped_acquire_local() : state(PyGILState_Ensure()) {}
-        gil_scoped_acquire_local(const gil_scoped_acquire_local &) = delete;
-        gil_scoped_acquire_local &operator=(const gil_scoped_acquire_local &) = delete;
-        ~gil_scoped_acquire_local() { PyGILState_Release(state); }
-        const PyGILState_STATE state;
-    } gil;
-#endif
+    gil_scoped_acquire_simple gil;
     error_scope err_scope;
 
     dict state_dict = get_python_state_dict();
@@ -598,26 +591,6 @@ const char *c_str(Args &&...args) {
     auto &strings = internals.static_strings;
     strings.emplace_front(std::forward<Args>(args)...);
     return strings.front().c_str();
-}
-
-inline const char *get_function_record_capsule_name() {
-    // On GraalPy, pointer equality of the names is currently not guaranteed
-#if !defined(GRAALVM_PYTHON)
-    return get_internals().function_record_capsule_name.c_str();
-#else
-    return nullptr;
-#endif
-}
-
-// Determine whether or not the following capsule contains a pybind11 function record.
-// Note that we use `internals` to make sure that only ABI compatible records are touched.
-//
-// This check is currently used in two places:
-// - An important optimization in functional.h to avoid overhead in C++ -> Python -> C++
-// - The sibling feature of cpp_function to allow overloads
-inline bool is_function_record_capsule(const capsule &cap) {
-    // Pointer equality as we rely on internals() to ensure unique pointers
-    return cap.name() == get_function_record_capsule_name();
 }
 
 PYBIND11_NAMESPACE_END(detail)

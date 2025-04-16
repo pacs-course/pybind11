@@ -49,6 +49,16 @@ def test_instance_new():
     assert cstats.alive() == 0
 
 
+def test_pass_unique_ptr():
+    obj = m.ToBeHeldByUniquePtr()
+    with pytest.raises(RuntimeError) as execinfo:
+        m.pass_unique_ptr(obj)
+    assert str(execinfo.value).startswith(
+        "Passing `std::unique_ptr<T>` from Python to C++ requires `py::class_<T, py::smart_holder>` (with T = "
+    )
+    assert "ToBeHeldByUniquePtr" in str(execinfo.value)
+
+
 def test_type():
     assert m.check_type(1) == m.DerivedClass1
     with pytest.raises(RuntimeError) as execinfo:
@@ -145,13 +155,13 @@ def test_qualname(doc):
     assert (
         doc(m.NestBase.Nested.fn)
         == """
-        fn(self: m.class_.NestBase.Nested, arg0: int, arg1: m.class_.NestBase, arg2: m.class_.NestBase.Nested) -> None
+        fn(self: m.class_.NestBase.Nested, arg0: typing.SupportsInt, arg1: m.class_.NestBase, arg2: m.class_.NestBase.Nested) -> None
     """
     )
     assert (
         doc(m.NestBase.Nested.fa)
         == """
-        fa(self: m.class_.NestBase.Nested, a: int, b: m.class_.NestBase, c: m.class_.NestBase.Nested) -> None
+        fa(self: m.class_.NestBase.Nested, a: typing.SupportsInt, b: m.class_.NestBase, c: m.class_.NestBase.Nested) -> None
     """
     )
     assert m.NestBase.__module__ == "pybind11_tests.class_"

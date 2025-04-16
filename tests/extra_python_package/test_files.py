@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import contextlib
 import os
+import shutil
 import string
 import subprocess
 import sys
@@ -12,6 +13,9 @@ import zipfile
 
 DIR = os.path.abspath(os.path.dirname(__file__))
 MAIN_DIR = os.path.dirname(os.path.dirname(DIR))
+
+HAS_UV = shutil.which("uv") is not None
+UV_ARGS = ["--installer=uv"] if HAS_UV else []
 
 PKGCONFIG = """\
 prefix=${{pcfiledir}}/../../
@@ -37,7 +41,9 @@ main_headers = {
     "include/pybind11/functional.h",
     "include/pybind11/gil.h",
     "include/pybind11/gil_safe_call_once.h",
+    "include/pybind11/gil_simple.h",
     "include/pybind11/iostream.h",
+    "include/pybind11/native_enum.h",
     "include/pybind11/numpy.h",
     "include/pybind11/operators.h",
     "include/pybind11/options.h",
@@ -45,6 +51,7 @@ main_headers = {
     "include/pybind11/pytypes.h",
     "include/pybind11/stl.h",
     "include/pybind11/stl_bind.h",
+    "include/pybind11/trampoline_self_life_support.h",
     "include/pybind11/type_caster_pyobject_ptr.h",
     "include/pybind11/typing.h",
     "include/pybind11/warnings.h",
@@ -62,10 +69,16 @@ detail_headers = {
     "include/pybind11/detail/common.h",
     "include/pybind11/detail/cpp_conduit.h",
     "include/pybind11/detail/descr.h",
+    "include/pybind11/detail/dynamic_raw_ptr_cast_if_possible.h",
+    "include/pybind11/detail/function_record_pyobject.h",
     "include/pybind11/detail/init.h",
     "include/pybind11/detail/internals.h",
+    "include/pybind11/detail/native_enum_data.h",
+    "include/pybind11/detail/pybind11_namespace_macros.h",
+    "include/pybind11/detail/struct_smart_holder.h",
     "include/pybind11/detail/type_caster_base.h",
     "include/pybind11/detail/typeid.h",
+    "include/pybind11/detail/using_smart_holder.h",
     "include/pybind11/detail/value_and_holder.h",
     "include/pybind11/detail/exception_translation.h",
 }
@@ -102,6 +115,8 @@ py_files = {
     "commands.py",
     "py.typed",
     "setup_helpers.py",
+    "share/__init__.py",
+    "share/pkgconfig/__init__.py",
 }
 
 headers = main_headers | conduit_headers | detail_headers | eigen_headers | stl_headers
@@ -157,7 +172,8 @@ def test_build_sdist(monkeypatch, tmpdir):
     monkeypatch.chdir(MAIN_DIR)
 
     subprocess.run(
-        [sys.executable, "-m", "build", "--sdist", f"--outdir={tmpdir}"], check=True
+        [sys.executable, "-m", "build", "--sdist", f"--outdir={tmpdir}", *UV_ARGS],
+        check=True,
     )
 
     (sdist,) = tmpdir.visit("*.tar.gz")
@@ -207,7 +223,8 @@ def test_build_global_dist(monkeypatch, tmpdir):
     monkeypatch.chdir(MAIN_DIR)
     monkeypatch.setenv("PYBIND11_GLOBAL_SDIST", "1")
     subprocess.run(
-        [sys.executable, "-m", "build", "--sdist", "--outdir", str(tmpdir)], check=True
+        [sys.executable, "-m", "build", "--sdist", "--outdir", str(tmpdir), *UV_ARGS],
+        check=True,
     )
 
     (sdist,) = tmpdir.visit("*.tar.gz")
@@ -255,7 +272,8 @@ def tests_build_wheel(monkeypatch, tmpdir):
     monkeypatch.chdir(MAIN_DIR)
 
     subprocess.run(
-        [sys.executable, "-m", "pip", "wheel", ".", "-w", str(tmpdir)], check=True
+        [sys.executable, "-m", "build", "--wheel", "--outdir", str(tmpdir), *UV_ARGS],
+        check=True,
     )
 
     (wheel,) = tmpdir.visit("*.whl")
@@ -283,7 +301,8 @@ def tests_build_global_wheel(monkeypatch, tmpdir):
     monkeypatch.setenv("PYBIND11_GLOBAL_SDIST", "1")
 
     subprocess.run(
-        [sys.executable, "-m", "pip", "wheel", ".", "-w", str(tmpdir)], check=True
+        [sys.executable, "-m", "build", "--wheel", "--outdir", str(tmpdir), *UV_ARGS],
+        check=True,
     )
 
     (wheel,) = tmpdir.visit("*.whl")

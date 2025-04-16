@@ -5,7 +5,7 @@
 # All rights reserved. Use of this source code is governed by a
 # BSD-style license that can be found in the LICENSE file.
 
-cmake_minimum_required(VERSION 3.15...3.30)
+cmake_minimum_required(VERSION 3.15...4.0)
 
 # Filter out items; print an optional message if any items filtered. This ignores extensions.
 #
@@ -116,6 +116,23 @@ set(PYBIND11_TEST_FILES
     test_chrono
     test_class
     test_class_release_gil_before_calling_cpp_dtor
+    test_class_sh_basic
+    test_class_sh_disowning
+    test_class_sh_disowning_mi
+    test_class_sh_factory_constructors
+    test_class_sh_inheritance
+    test_class_sh_mi_thunks
+    test_class_sh_property
+    test_class_sh_property_non_owning
+    test_class_sh_shared_ptr_copy_move
+    test_class_sh_trampoline_basic
+    test_class_sh_trampoline_self_life_support
+    test_class_sh_trampoline_shared_from_this
+    test_class_sh_trampoline_shared_ptr_cpp_arg
+    test_class_sh_trampoline_unique_ptr
+    test_class_sh_unique_ptr_custom_deleter
+    test_class_sh_unique_ptr_member
+    test_class_sh_virtual_py_cpp_mix
     test_const_name
     test_constants_and_functions
     test_copy_move
@@ -137,6 +154,7 @@ set(PYBIND11_TEST_FILES
     test_methods_and_attributes
     test_modules
     test_multiple_inheritance
+    test_native_enum
     test_numpy_array
     test_numpy_dtypes
     test_numpy_vectorize
@@ -394,22 +412,26 @@ function(pybind11_enable_warnings target_name)
   endif()
 
   if(PYBIND11_WERROR)
-    if(MSVC)
-      target_compile_options(${target_name} PRIVATE /WX)
-    elseif(PYBIND11_CUDA_TESTS)
-      target_compile_options(${target_name} PRIVATE "SHELL:-Werror all-warnings")
-    elseif(CMAKE_CXX_COMPILER_ID MATCHES "(GNU|Clang|IntelLLVM)")
-      target_compile_options(${target_name} PRIVATE -Werror)
-    elseif(CMAKE_CXX_COMPILER_ID STREQUAL "Intel")
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "Intel")
       if(CMAKE_CXX_STANDARD EQUAL 17) # See PR #3570
         target_compile_options(${target_name} PRIVATE -Wno-conversion)
       endif()
-      target_compile_options(
-        ${target_name}
-        PRIVATE
-          -Werror-all
-          # "Inlining inhibited by limit max-size", "Inlining inhibited by limit max-total-size"
-          -diag-disable 11074,11076)
+      # "Inlining inhibited by limit max-size", "Inlining inhibited by limit max-total-size"
+      target_compile_options(${target_name} PRIVATE -diag-disable 11074,11076)
+    endif()
+
+    if(CMAKE_VERSION VERSION_LESS "3.24")
+      if(MSVC)
+        target_compile_options(${target_name} PRIVATE /WX)
+      elseif(PYBIND11_CUDA_TESTS)
+        target_compile_options(${target_name} PRIVATE "SHELL:-Werror all-warnings")
+      elseif(CMAKE_CXX_COMPILER_ID MATCHES "(GNU|Clang|IntelLLVM)")
+        target_compile_options(${target_name} PRIVATE -Werror)
+      elseif(CMAKE_CXX_COMPILER_ID STREQUAL "Intel")
+        target_compile_options(${target_name} PRIVATE -Werror-all)
+      endif()
+    else()
+      set_target_properties(${target_name} PROPERTIES COMPILE_WARNING_AS_ERROR ON)
     endif()
   endif()
 endfunction()
@@ -519,10 +541,9 @@ if(NOT CMAKE_CURRENT_SOURCE_DIR STREQUAL CMAKE_CURRENT_BINARY_DIR)
 
 endif()
 
-# cmake 3.12 added list(transform <list> prepend
-# but we can't use it yet
-string(REPLACE "test_" "${CMAKE_CURRENT_SOURCE_DIR}/test_" PYBIND11_ABS_PYTEST_FILES
-               "${PYBIND11_PYTEST_FILES}")
+# Convert relative to full file names
+list(TRANSFORM PYBIND11_PYTEST_FILES PREPEND "${CMAKE_CURRENT_SOURCE_DIR}/"
+                                             OUTPUT_VARIABLE PYBIND11_ABS_PYTEST_FILES)
 
 set(PYBIND11_TEST_PREFIX_COMMAND
     ""
@@ -589,6 +610,9 @@ add_custom_command(
     ${CMAKE_CURRENT_BINARY_DIR}/sosize-$<TARGET_FILE_NAME:pybind11_tests>.txt)
 
 if(NOT PYBIND11_CUDA_TESTS)
+  # Test pure C++ code (not depending on Python). Provides the `test_pure_cpp` target.
+  add_subdirectory(pure_cpp)
+
   # Test embedding the interpreter. Provides the `cpptest` target.
   add_subdirectory(test_embed)
 

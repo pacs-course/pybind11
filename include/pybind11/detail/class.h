@@ -457,6 +457,8 @@ inline void clear_instance(PyObject *self) {
             if (instance->owned || v_h.holder_constructed()) {
                 v_h.type->dealloc(v_h);
             }
+        } else if (v_h.holder_constructed()) {
+            v_h.type->dealloc(v_h); // Disowned instance.
         }
     }
     // Deallocate the value/holder layout internals:
@@ -714,15 +716,7 @@ inline PyObject *make_new_python_type(const type_record &rec) {
             PyUnicode_FromFormat("%U.%U", rec.scope.attr("__qualname__").ptr(), name.ptr()));
     }
 
-    object module_;
-    if (rec.scope) {
-        if (hasattr(rec.scope, "__module__")) {
-            module_ = rec.scope.attr("__module__");
-        } else if (hasattr(rec.scope, "__name__")) {
-            module_ = rec.scope.attr("__name__");
-        }
-    }
-
+    object module_ = get_module_name_if_available(rec.scope);
     const auto *full_name = c_str(
 #if !defined(PYPY_VERSION)
         module_ ? str(module_).cast<std::string>() + "." + rec.name :
