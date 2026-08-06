@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Sequence
+from collections.abc import Sequence
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from conftest import SanitizedString
@@ -21,7 +22,10 @@ def assert_negate_function(
 
 
 def test_negate(doc: SanitizedString) -> None:
-    assert doc(m.negate) == "negate(arg0: Sequence[float]) -> tuple[float, float]"
+    assert (
+        doc(m.negate)
+        == "negate(arg0: collections.abc.Sequence[float]) -> tuple[float, float]"
+    )
     assert_negate_function([1.0, -1.0], (-1.0, 1.0))
     assert_negate_function((1.0, -1.0), (-1.0, 1.0))
     assert_negate_function([1, -1], (-1.0, 1.0))

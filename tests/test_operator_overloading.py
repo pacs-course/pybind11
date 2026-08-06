@@ -88,9 +88,6 @@ def test_operator_overloading():
     assert cstats.move_assignments == 0
 
 
-@pytest.mark.xfail(
-    env.GRAALPY and env.GRAALPY_VERSION < (24, 2), reason="Fixed in GraalPy 24.2"
-)
 def test_operators_notimplemented():
     """#393: need to return NotSupported to ensure correct arithmetic operator behavior"""
 
@@ -158,4 +155,4 @@ def test_overriding_eq_reset_hash():
 def test_return_set_of_unhashable():
     with pytest.raises(TypeError) as excinfo:
         m.get_unhashable_HashMe_set()
-    assert str(excinfo.value.__cause__).startswith("unhashable type:")
+    assert "unhashable type" in str(excinfo.value.__cause__)

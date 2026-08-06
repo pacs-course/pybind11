@@ -28,10 +28,16 @@ endif()
 
 find_package(Threads REQUIRED)
 
-add_executable(test_embed catch.cpp test_interpreter.cpp)
-pybind11_enable_warnings(test_embed)
+if(PYBIND11_TEST_SMART_HOLDER)
+  add_compile_definitions(
+    -DPYBIND11_RUN_TESTING_WITH_SMART_HOLDER_AS_DEFAULT_BUT_NEVER_USE_IN_PRODUCTION_PLEASE)
+endif()
 
-target_link_libraries(test_embed PRIVATE pybind11::embed Catch2::Catch2 Threads::Threads)
+add_executable(test_with_catch catch.cpp test_args_convert_vector.cpp test_argument_vector.cpp
+                               test_interpreter.cpp test_subinterpreter.cpp)
+pybind11_enable_warnings(test_with_catch)
+
+target_link_libraries(test_with_catch PRIVATE pybind11::embed Catch2::Catch2 Threads::Threads)
 
 if(NOT CMAKE_CURRENT_SOURCE_DIR STREQUAL CMAKE_CURRENT_BINARY_DIR)
   file(COPY test_interpreter.py test_trampoline.py DESTINATION "${CMAKE_CURRENT_BINARY_DIR}")
@@ -39,9 +45,11 @@ endif()
 
 add_custom_target(
   cpptest
-  COMMAND "$<TARGET_FILE:test_embed>"
-  DEPENDS test_embed
-  WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}")
+  COMMAND "$<TARGET_FILE:test_with_catch>"
+  DEPENDS test_with_catch
+  WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+  USES_TERMINAL # Ensures output is shown immediately (not buffered and possibly lost on crash)
+)
 
 pybind11_add_module(external_module THIN_LTO external_module.cpp)
 set_target_properties(external_module PROPERTIES LIBRARY_OUTPUT_DIRECTORY

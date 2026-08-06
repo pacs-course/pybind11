@@ -5,7 +5,7 @@
 # All rights reserved. Use of this source code is governed by a
 # BSD-style license that can be found in the LICENSE file.
 
-include_guard(GLOBAL)
+include_guard(DIRECTORY)
 
 if(pybind11_FIND_QUIETLY)
   set(_pybind11_quiet QUIET)
@@ -37,7 +37,7 @@ endif()
 
 # A user can set versions manually too
 set(Python_ADDITIONAL_VERSIONS
-    "3.12;3.11;3.10;3.9;3.8"
+    "3.15;3.14;3.13;3.12;3.11;3.10;3.9"
     CACHE INTERNAL "")
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}")
@@ -100,8 +100,8 @@ set(pybind11_INCLUDE_DIRS
     "${pybind11_INCLUDE_DIR}" "${PYTHON_INCLUDE_DIRS}"
     CACHE INTERNAL "Directories where pybind11 and possibly Python headers are located")
 
-# Python debug libraries expose slightly different objects before 3.8
-# https://docs.python.org/3.6/c-api/intro.html#debugging-builds
+# A debug build of Python needs Py_DEBUG to select the matching ABI.
+# https://docs.python.org/3/c-api/intro.html#debugging-builds
 # https://stackoverflow.com/questions/39161202/how-to-work-around-missing-pymodule-create2-in-amd64-win-python35-d-lib
 if(PYTHON_IS_DEBUG)
   set_property(
@@ -119,7 +119,8 @@ target_link_libraries(
   pybind11::module
   INTERFACE
     pybind11::python_link_helper
-    "$<$<OR:$<PLATFORM_ID:Windows>,$<PLATFORM_ID:Cygwin>>:pybind11::_ClassicPythonLibraries>")
+    "$<$<OR:$<PLATFORM_ID:Windows>,$<PLATFORM_ID:Cygwin>,$<PLATFORM_ID:Android>>:pybind11::_ClassicPythonLibraries>"
+)
 
 target_link_libraries(pybind11::embed INTERFACE pybind11::pybind11
                                                 pybind11::_ClassicPythonLibraries)

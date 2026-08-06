@@ -1,13 +1,29 @@
 from __future__ import annotations
 
+import gc
 import sys
 from unittest import mock
 
 import pytest
 
 import env
-from pybind11_tests import PYBIND11_REFCNT_IMMORTAL, ConstructorStats, UserType
+from pybind11_tests import ConstructorStats, UserType
 from pybind11_tests import class_ as m
+
+UINT32MAX = 2**32 - 1
+
+
+def refcount_immortal(ob: object) -> int:
+    if _is_immortal := getattr(sys, "_is_immortal", None):
+        return UINT32MAX if _is_immortal(ob) else sys.getrefcount(ob)
+    return sys.getrefcount(ob)
+
+
+MANAGED_DICT_GET_REFERRERS_SUPPORTED = (
+    env.CPYTHON
+    and sys.version_info >= (3, 13, 13)
+    and (sys.version_info < (3, 14) or sys.version_info >= (3, 14, 4))
+)
 
 
 def test_obj_class_name():
@@ -35,6 +51,16 @@ def test_instance(msg):
     assert cstats.alive() == 1
     del instance
     assert cstats.alive() == 0
+
+
+@pytest.mark.skipif(
+    not MANAGED_DICT_GET_REFERRERS_SUPPORTED,
+    reason="Requires CPython 3.13.13+ or 3.14.4+ managed dict traversal support",
+)
+def test_get_referrers():
+    instance = m.DynamicAttr()
+    instance.a = "test"
+    assert instance in gc.get_referrers(instance.__dict__)
 
 
 def test_instance_new():
@@ -155,13 +181,13 @@ def test_qualname(doc):
     assert (
         doc(m.NestBase.Nested.fn)
         == """
-        fn(self: m.class_.NestBase.Nested, arg0: typing.SupportsInt, arg1: m.class_.NestBase, arg2: m.class_.NestBase.Nested) -> None
+        fn(self: m.class_.NestBase.Nested, arg0: typing.SupportsInt | typing.SupportsIndex, arg1: m.class_.NestBase, arg2: m.class_.NestBase.Nested) -> None
     """
     )
     assert (
         doc(m.NestBase.Nested.fa)
         == """
-        fa(self: m.class_.NestBase.Nested, a: typing.SupportsInt, b: m.class_.NestBase, c: m.class_.NestBase.Nested) -> None
+        fa(self: m.class_.NestBase.Nested, a: typing.SupportsInt | typing.SupportsIndex, b: m.class_.NestBase, c: m.class_.NestBase.Nested) -> None
     """
     )
     assert m.NestBase.__module__ == "pybind11_tests.class_"
@@ -382,23 +408,23 @@ def test_brace_initialization():
 @pytest.mark.xfail("env.PYPY or env.GRAALPY")
 def test_class_refcount():
     """Instances must correctly increase/decrease the reference count of their types (#1029)"""
-    from sys import getrefcount
 
     class PyDog(m.Dog):
         pass
 
     for cls in m.Dog, PyDog:
-        refcount_1 = getrefcount(cls)
+        refcount_1 = refcount_immortal(cls)
         molly = [cls("Molly") for _ in range(10)]
-        refcount_2 = getrefcount(cls)
+        refcount_2 = refcount_immortal(cls)
 
         del molly
         pytest.gc_collect()
-        refcount_3 = getrefcount(cls)
+        refcount_3 = refcount_immortal(cls)
 
+        # Python may report a large value here (above 30 bits), that's also fine
         assert refcount_1 == refcount_3
         assert (refcount_2 > refcount_1) or (
-            refcount_2 == refcount_1 == PYBIND11_REFCNT_IMMORTAL
+            refcount_2 == refcount_1 and refcount_1 >= 2**29
         )
 
 

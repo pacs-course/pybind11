@@ -18,8 +18,6 @@ Adds the following functions::
 
 #]======================================================]
 
-include_guard(GLOBAL)
-
 # If we are in subdirectory mode, all IMPORTED targets must be GLOBAL. If we
 # are in CONFIG mode, they should be "normal" targets instead.
 # In CMake 3.11+ you can promote a target to global after you create it,
@@ -28,8 +26,13 @@ get_property(
   is_config
   TARGET pybind11::headers
   PROPERTY IMPORTED)
+
 if(NOT is_config)
+  include_guard(GLOBAL)
   set(optional_global GLOBAL)
+else()
+  include_guard(DIRECTORY)
+  set(optional_global "")
 endif()
 
 # If not run in Python mode, we still would like this to at least
@@ -37,6 +40,22 @@ endif()
 set(pybind11_INCLUDE_DIRS
     "${pybind11_INCLUDE_DIR}"
     CACHE INTERNAL "Include directory for pybind11 (Python not requested)")
+
+# CMP0190 prohibits calling FindPython with both Interpreter and Development components
+# when cross-compiling, unless the CMAKE_CROSSCOMPILING_EMULATOR variable is defined.
+# Default PYBIND11_USE_CROSSCOMPILING to ON in that case, but never override a value the
+# project set explicitly (e.g. Emscripten/Pyodide defines an emulator yet still wants it ON).
+# PYBIND11_USE_CROSSCOMPILING is undefined for find_package() consumers, but our own
+# CMakeLists.txt always defines it via option(); _PYBIND11_USE_CROSSCOMPILING_DEFAULTED tells
+# us whether that came from the project or from the option() default.
+if(CMAKE_VERSION VERSION_GREATER_EQUAL "4.1"
+   AND NOT DEFINED CMAKE_CROSSCOMPILING_EMULATOR
+   AND (NOT DEFINED PYBIND11_USE_CROSSCOMPILING OR _PYBIND11_USE_CROSSCOMPILING_DEFAULTED))
+  cmake_policy(GET CMP0190 _pybind11_cmp0190)
+  if(_pybind11_cmp0190 STREQUAL "NEW")
+    set(PYBIND11_USE_CROSSCOMPILING "ON")
+  endif()
+endif()
 
 if(CMAKE_CROSSCOMPILING AND PYBIND11_USE_CROSSCOMPILING)
   set(_PYBIND11_CROSSCOMPILING
@@ -100,7 +119,8 @@ add_library(pybind11::python_link_helper IMPORTED INTERFACE ${optional_global})
 set_property(
   TARGET pybind11::python_link_helper
   APPEND
-  PROPERTY INTERFACE_LINK_OPTIONS "$<$<PLATFORM_ID:Darwin>:LINKER:-undefined,dynamic_lookup>")
+  PROPERTY INTERFACE_LINK_OPTIONS
+           "$<$<PLATFORM_ID:Darwin,iOS,tvOS,watchOS,visionOS>:LINKER:-undefined,dynamic_lookup>")
 
 # ------------------------ Windows extras -------------------------
 
@@ -200,19 +220,21 @@ elseif(
   else()
     include("${CMAKE_CURRENT_LIST_DIR}/pybind11NewTools.cmake")
 
-    message(
-      "Using compatibility mode for Python, set PYBIND11_FINDPYTHON to NEW/OLD to silence this message"
-    )
-    set(PYTHON_EXECUTABLE "${Python_EXECUTABLE}")
-    set(PYTHON_INCLUDE_DIR "${Python_INCLUDE_DIR}")
-    set(Python_INCLUDE_DIRS "${Python_INCLUDE_DIRS}")
-    set(PYTHON_LIBRARY "${Python_LIRARY}")
-    set(PYTHON_LIBRARIES "${Python_LIRARIES}")
-    set(PYTHON_VERSION "${Python_VERSION}")
-    set(PYTHON_VERSION_STRING "${Python_VERSION_STRING}")
-    set(PYTHON_VERSION_MAJOR "${Python_VERSION_MAJOR}")
-    set(PYTHON_VERSION_MINOR "${Python_VERSION_MINOR}")
-    set(PYTHON_VERSION_PATCH "${Python_VERSION_PATCH}")
+    if(PYBIND11_FINDPYTHON STREQUAL "COMPAT")
+      message(
+        "Using compatibility mode for Python, set PYBIND11_FINDPYTHON to NEW/OLD to silence this message"
+      )
+      set(PYTHON_EXECUTABLE "${Python_EXECUTABLE}")
+      set(PYTHON_INCLUDE_DIR "${Python_INCLUDE_DIR}")
+      set(Python_INCLUDE_DIRS "${Python_INCLUDE_DIRS}")
+      set(PYTHON_LIBRARY "${Python_LIBRARY}")
+      set(PYTHON_LIBRARIES "${Python_LIBRARIES}")
+      set(PYTHON_VERSION "${Python_VERSION}")
+      set(PYTHON_VERSION_STRING "${Python_VERSION_STRING}")
+      set(PYTHON_VERSION_MAJOR "${Python_VERSION_MAJOR}")
+      set(PYTHON_VERSION_MINOR "${Python_VERSION_MINOR}")
+      set(PYTHON_VERSION_PATCH "${Python_VERSION_PATCH}")
+    endif()
   endif()
 
 else()
@@ -336,7 +358,11 @@ function(_pybind11_generate_lto target prefer_thin_lto)
     if(CMAKE_CXX_COMPILER_ID MATCHES "Clang" AND NOT APPLE)
       # Clang Gold plugin does not support -Os; append -O3 to MinSizeRel builds to override it
       set(linker_append ";$<$<CONFIG:MinSizeRel>:-O3>")
-    elseif(CMAKE_CXX_COMPILER_ID MATCHES "GNU" AND NOT MINGW)
+    elseif(
+      CMAKE_CXX_COMPILER_ID MATCHES "GNU"
+      AND NOT MINGW
+      AND NOT APPLE)
+      # GCC on macOS has no linker plugin, which -fno-fat-lto-objects requires
       set(cxx_append ";-fno-fat-lto-objects")
     endif()
 
@@ -358,6 +384,11 @@ function(_pybind11_generate_lto target prefer_thin_lto)
         PYBIND11_LTO_CXX_FLAGS PYBIND11_LTO_LINKER_FLAGS)
     endif()
     if(NOT HAS_FLTO_THIN)
+      _pybind11_return_if_cxx_and_linker_flags_work(
+        HAS_FLTO_AUTO "-flto=auto${cxx_append}" "-flto=auto${linker_append}"
+        PYBIND11_LTO_CXX_FLAGS PYBIND11_LTO_LINKER_FLAGS)
+    endif()
+    if(NOT HAS_FLTO_AUTO)
       _pybind11_return_if_cxx_and_linker_flags_work(
         HAS_FLTO "-flto${cxx_append}" "-flto${linker_append}" PYBIND11_LTO_CXX_FLAGS
         PYBIND11_LTO_LINKER_FLAGS)

@@ -29,6 +29,10 @@
 #include <utility>
 #include <vector>
 
+#ifdef PYBIND11_HAS_SPAN
+#    include <span>
+#endif
+
 #if defined(PYBIND11_NUMPY_1_ONLY)
 #    error "PYBIND11_NUMPY_1_ONLY is no longer supported (see PR #5595)."
 #endif
@@ -48,6 +52,9 @@ PYBIND11_WARNING_DISABLE_MSVC(4127)
 
 class dtype; // Forward declaration
 class array; // Forward declaration
+
+template <typename>
+struct numpy_scalar; // Forward declaration
 
 PYBIND11_NAMESPACE_BEGIN(detail)
 
@@ -245,6 +252,21 @@ struct npy_api {
         NPY_UINT64_
         = platform_lookup<std::uint64_t, unsigned long, unsigned long long, unsigned int>(
             NPY_ULONG_, NPY_ULONGLONG_, NPY_UINT_),
+        NPY_FLOAT32_ = platform_lookup<float, double, float, long double>(
+            NPY_DOUBLE_, NPY_FLOAT_, NPY_LONGDOUBLE_),
+        NPY_FLOAT64_ = platform_lookup<double, double, float, long double>(
+            NPY_DOUBLE_, NPY_FLOAT_, NPY_LONGDOUBLE_),
+        NPY_COMPLEX64_
+        = platform_lookup<std::complex<float>,
+                          std::complex<double>,
+                          std::complex<float>,
+                          std::complex<long double>>(NPY_DOUBLE_, NPY_FLOAT_, NPY_LONGDOUBLE_),
+        NPY_COMPLEX128_
+        = platform_lookup<std::complex<double>,
+                          std::complex<double>,
+                          std::complex<float>,
+                          std::complex<long double>>(NPY_DOUBLE_, NPY_FLOAT_, NPY_LONGDOUBLE_),
+        NPY_CHAR_ = std::is_signed<char>::value ? NPY_BYTE_ : NPY_UBYTE_,
     };
 
     unsigned int PyArray_RUNTIME_VERSION_;
@@ -268,6 +290,7 @@ struct npy_api {
 
     unsigned int (*PyArray_GetNDArrayCFeatureVersion_)();
     PyObject *(*PyArray_DescrFromType_)(int);
+    PyObject *(*PyArray_TypeObjectFromType_)(int);
     PyObject *(*PyArray_NewFromDescr_)(PyTypeObject *,
                                        PyObject *,
                                        int,
@@ -284,6 +307,8 @@ struct npy_api {
     PyTypeObject *PyVoidArrType_Type_;
     PyTypeObject *PyArrayDescr_Type_;
     PyObject *(*PyArray_DescrFromScalar_)(PyObject *);
+    PyObject *(*PyArray_Scalar_)(void *, PyObject *, PyObject *);
+    void (*PyArray_ScalarAsCtype_)(PyObject *, void *);
     PyObject *(*PyArray_FromAny_)(PyObject *, PyObject *, int, int, int, PyObject *);
     int (*PyArray_DescrConverter_)(PyObject *, PyObject **);
     bool (*PyArray_EquivTypes_)(PyObject *, PyObject *);
@@ -301,7 +326,10 @@ private:
         API_PyArrayDescr_Type = 3,
         API_PyVoidArrType_Type = 39,
         API_PyArray_DescrFromType = 45,
+        API_PyArray_TypeObjectFromType = 46,
         API_PyArray_DescrFromScalar = 57,
+        API_PyArray_Scalar = 60,
+        API_PyArray_ScalarAsCtype = 62,
         API_PyArray_FromAny = 69,
         API_PyArray_Resize = 80,
         // CopyInto was slot 82 and 50 was effectively an alias. NumPy 2 removed 82.
@@ -336,7 +364,10 @@ private:
         DECL_NPY_API(PyVoidArrType_Type);
         DECL_NPY_API(PyArrayDescr_Type);
         DECL_NPY_API(PyArray_DescrFromType);
+        DECL_NPY_API(PyArray_TypeObjectFromType);
         DECL_NPY_API(PyArray_DescrFromScalar);
+        DECL_NPY_API(PyArray_Scalar);
+        DECL_NPY_API(PyArray_ScalarAsCtype);
         DECL_NPY_API(PyArray_FromAny);
         DECL_NPY_API(PyArray_Resize);
         DECL_NPY_API(PyArray_CopyInto);
@@ -354,6 +385,83 @@ private:
         return api;
     }
 };
+
+template <typename T>
+struct is_complex : std::false_type {};
+template <typename T>
+struct is_complex<std::complex<T>> : std::true_type {};
+
+template <typename T, typename = void>
+struct npy_format_descriptor_name;
+
+template <typename T>
+struct npy_format_descriptor_name<T, enable_if_t<std::is_integral<T>::value>> {
+    static constexpr auto name = const_name<std::is_same<T, bool>::value>(
+        const_name("numpy.bool"),
+        const_name<std::is_signed<T>::value>("numpy.int", "numpy.uint")
+            + const_name<sizeof(T) * 8>());
+};
+
+template <typename T>
+struct npy_format_descriptor_name<T, enable_if_t<std::is_floating_point<T>::value>> {
+    static constexpr auto name = const_name < std::is_same<T, float>::value
+                                 || std::is_same<T, const float>::value
+                                 || std::is_same<T, double>::value
+                                 || std::is_same<T, const double>::value
+                                        > (const_name("numpy.float") + const_name<sizeof(T) * 8>(),
+                                           const_name("numpy.longdouble"));
+};
+
+template <typename T>
+struct npy_format_descriptor_name<T, enable_if_t<is_complex<T>::value>> {
+    static constexpr auto name = const_name < std::is_same<typename T::value_type, float>::value
+                                 || std::is_same<typename T::value_type, const float>::value
+                                 || std::is_same<typename T::value_type, double>::value
+                                 || std::is_same<typename T::value_type, const double>::value
+                                        > (const_name("numpy.complex")
+                                               + const_name<sizeof(typename T::value_type) * 16>(),
+                                           const_name("numpy.clongdouble"));
+};
+
+template <typename T>
+struct numpy_scalar_info {};
+
+#define PYBIND11_NUMPY_SCALAR_IMPL(ctype_, typenum_)                                              \
+    template <>                                                                                   \
+    struct numpy_scalar_info<ctype_> {                                                            \
+        static constexpr auto name = npy_format_descriptor_name<ctype_>::name;                    \
+        static constexpr int typenum = npy_api::typenum_##_;                                      \
+    }
+
+// boolean type
+PYBIND11_NUMPY_SCALAR_IMPL(bool, NPY_BOOL);
+
+// character types
+PYBIND11_NUMPY_SCALAR_IMPL(char, NPY_CHAR);
+PYBIND11_NUMPY_SCALAR_IMPL(signed char, NPY_BYTE);
+PYBIND11_NUMPY_SCALAR_IMPL(unsigned char, NPY_UBYTE);
+
+// signed integer types
+PYBIND11_NUMPY_SCALAR_IMPL(std::int16_t, NPY_INT16);
+PYBIND11_NUMPY_SCALAR_IMPL(std::int32_t, NPY_INT32);
+PYBIND11_NUMPY_SCALAR_IMPL(std::int64_t, NPY_INT64);
+
+// unsigned integer types
+PYBIND11_NUMPY_SCALAR_IMPL(std::uint16_t, NPY_UINT16);
+PYBIND11_NUMPY_SCALAR_IMPL(std::uint32_t, NPY_UINT32);
+PYBIND11_NUMPY_SCALAR_IMPL(std::uint64_t, NPY_UINT64);
+
+// floating point types
+PYBIND11_NUMPY_SCALAR_IMPL(float, NPY_FLOAT);
+PYBIND11_NUMPY_SCALAR_IMPL(double, NPY_DOUBLE);
+PYBIND11_NUMPY_SCALAR_IMPL(long double, NPY_LONGDOUBLE);
+
+// complex types
+PYBIND11_NUMPY_SCALAR_IMPL(std::complex<float>, NPY_CFLOAT);
+PYBIND11_NUMPY_SCALAR_IMPL(std::complex<double>, NPY_CDOUBLE);
+PYBIND11_NUMPY_SCALAR_IMPL(std::complex<long double>, NPY_CLONGDOUBLE);
+
+#undef PYBIND11_NUMPY_SCALAR_IMPL
 
 // This table normalizes typenums by mapping NPY_INT_, NPY_LONG, ... to NPY_INT32_, NPY_INT64, ...
 // This is needed to correctly handle situations where multiple typenums map to the same type,
@@ -453,10 +561,6 @@ template <typename T>
 struct is_std_array : std::false_type {};
 template <typename T, size_t N>
 struct is_std_array<std::array<T, N>> : std::true_type {};
-template <typename T>
-struct is_complex : std::false_type {};
-template <typename T>
-struct is_complex<std::complex<T>> : std::true_type {};
 
 template <typename T>
 struct array_info_scalar {
@@ -670,7 +774,64 @@ template <typename T, ssize_t Dim>
 struct type_caster<unchecked_mutable_reference<T, Dim>>
     : type_caster<unchecked_reference<T, Dim>> {};
 
+template <typename T>
+struct type_caster<numpy_scalar<T>> {
+    using value_type = T;
+    using type_info = numpy_scalar_info<T>;
+
+    PYBIND11_TYPE_CASTER(numpy_scalar<T>, type_info::name);
+
+    static handle &target_type() {
+        static handle tp = npy_api::get().PyArray_TypeObjectFromType_(type_info::typenum);
+        return tp;
+    }
+
+    static handle &target_dtype() {
+        static handle tp = npy_api::get().PyArray_DescrFromType_(type_info::typenum);
+        return tp;
+    }
+
+    bool load(handle src, bool) {
+        if (isinstance(src, target_type())) {
+            npy_api::get().PyArray_ScalarAsCtype_(src.ptr(), &value.value);
+            return true;
+        }
+        return false;
+    }
+
+    static handle cast(numpy_scalar<T> src, return_value_policy, handle) {
+        return npy_api::get().PyArray_Scalar_(&src.value, target_dtype().ptr(), nullptr);
+    }
+};
+
 PYBIND11_NAMESPACE_END(detail)
+
+template <typename T>
+struct numpy_scalar {
+    using value_type = T;
+
+    value_type value;
+
+    numpy_scalar() = default;
+    explicit numpy_scalar(value_type value) : value(value) {}
+
+    explicit operator value_type() const { return value; }
+    numpy_scalar &operator=(value_type value) {
+        this->value = value;
+        return *this;
+    }
+
+    friend bool operator==(const numpy_scalar &a, const numpy_scalar &b) {
+        return a.value == b.value;
+    }
+
+    friend bool operator!=(const numpy_scalar &a, const numpy_scalar &b) { return !(a == b); }
+};
+
+template <typename T>
+numpy_scalar<T> make_scalar(T value) {
+    return numpy_scalar<T>(value);
+}
 
 class dtype : public object {
 public:
@@ -986,6 +1147,13 @@ public:
     /// Dimensions of the array
     const ssize_t *shape() const { return detail::array_proxy(m_ptr)->dimensions; }
 
+#ifdef PYBIND11_HAS_SPAN
+    /// Dimensions of the array as a span
+    std::span<const ssize_t, std::dynamic_extent> shape_span() const {
+        return std::span(shape(), static_cast<std::size_t>(ndim()));
+    }
+#endif
+
     /// Dimension along a given axis
     ssize_t shape(ssize_t dim) const {
         if (dim >= ndim()) {
@@ -996,6 +1164,13 @@ public:
 
     /// Strides of the array
     const ssize_t *strides() const { return detail::array_proxy(m_ptr)->strides; }
+
+#ifdef PYBIND11_HAS_SPAN
+    /// Strides of the array as a span
+    std::span<const ssize_t, std::dynamic_extent> strides_span() const {
+        return std::span(strides(), static_cast<std::size_t>(ndim()));
+    }
+#endif
 
     /// Stride along a given axis
     ssize_t strides(ssize_t dim) const {
@@ -1409,38 +1584,6 @@ struct compare_buffer_info<T, detail::enable_if_t<detail::is_pod_struct<T>::valu
     }
 };
 
-template <typename T, typename = void>
-struct npy_format_descriptor_name;
-
-template <typename T>
-struct npy_format_descriptor_name<T, enable_if_t<std::is_integral<T>::value>> {
-    static constexpr auto name = const_name<std::is_same<T, bool>::value>(
-        const_name("bool"),
-        const_name<std::is_signed<T>::value>("numpy.int", "numpy.uint")
-            + const_name<sizeof(T) * 8>());
-};
-
-template <typename T>
-struct npy_format_descriptor_name<T, enable_if_t<std::is_floating_point<T>::value>> {
-    static constexpr auto name = const_name < std::is_same<T, float>::value
-                                 || std::is_same<T, const float>::value
-                                 || std::is_same<T, double>::value
-                                 || std::is_same<T, const double>::value
-                                        > (const_name("numpy.float") + const_name<sizeof(T) * 8>(),
-                                           const_name("numpy.longdouble"));
-};
-
-template <typename T>
-struct npy_format_descriptor_name<T, enable_if_t<is_complex<T>::value>> {
-    static constexpr auto name = const_name < std::is_same<typename T::value_type, float>::value
-                                 || std::is_same<typename T::value_type, const float>::value
-                                 || std::is_same<typename T::value_type, double>::value
-                                 || std::is_same<typename T::value_type, const double>::value
-                                        > (const_name("numpy.complex")
-                                               + const_name<sizeof(typename T::value_type) * 16>(),
-                                           const_name("numpy.longcomplex"));
-};
-
 template <typename T>
 struct npy_format_descriptor<
     T,
@@ -1735,7 +1878,7 @@ public:
     using value_type = container_type::value_type;
     using size_type = container_type::size_type;
 
-    common_iterator() : m_strides() {}
+    common_iterator() = default;
 
     common_iterator(void *ptr, const container_type &strides, const container_type &shape)
         : p_ptr(reinterpret_cast<char *>(ptr)), m_strides(strides.size()) {
@@ -2183,5 +2326,87 @@ template <typename Return,
 Helper vectorize(Return (Class::*f)(Args...) const) {
     return Helper(std::mem_fn(f));
 }
+
+// Intentionally no &&/const&& overloads: vectorized method calls operate on the bound Python
+// instance and should not consume/move-from self.
+// Vectorize a class method (non-const, lvalue ref-qualified):
+template <typename Return,
+          typename Class,
+          typename... Args,
+          typename Helper = detail::vectorize_helper<
+              decltype(std::mem_fn(std::declval<Return (Class::*)(Args...) &>())),
+              Return,
+              Class *,
+              Args...>>
+Helper vectorize(Return (Class::*f)(Args...) &) {
+    return Helper(std::mem_fn(f));
+}
+
+// Vectorize a class method (const, lvalue ref-qualified):
+template <typename Return,
+          typename Class,
+          typename... Args,
+          typename Helper = detail::vectorize_helper<
+              decltype(std::mem_fn(std::declval<Return (Class::*)(Args...) const &>())),
+              Return,
+              const Class *,
+              Args...>>
+Helper vectorize(Return (Class::*f)(Args...) const &) {
+    return Helper(std::mem_fn(f));
+}
+
+#ifdef __cpp_noexcept_function_type
+// Vectorize a class method (non-const, noexcept):
+template <typename Return,
+          typename Class,
+          typename... Args,
+          typename Helper = detail::vectorize_helper<
+              decltype(std::mem_fn(std::declval<Return (Class::*)(Args...) noexcept>())),
+              Return,
+              Class *,
+              Args...>>
+Helper vectorize(Return (Class::*f)(Args...) noexcept) {
+    return Helper(std::mem_fn(f));
+}
+
+// Vectorize a class method (const, noexcept):
+template <typename Return,
+          typename Class,
+          typename... Args,
+          typename Helper = detail::vectorize_helper<
+              decltype(std::mem_fn(std::declval<Return (Class::*)(Args...) const noexcept>())),
+              Return,
+              const Class *,
+              Args...>>
+Helper vectorize(Return (Class::*f)(Args...) const noexcept) {
+    return Helper(std::mem_fn(f));
+}
+
+// Vectorize a class method (non-const, lvalue ref-qualified, noexcept):
+template <typename Return,
+          typename Class,
+          typename... Args,
+          typename Helper = detail::vectorize_helper<
+              decltype(std::mem_fn(std::declval<Return (Class::*)(Args...) & noexcept>())),
+              Return,
+              Class *,
+              Args...>>
+Helper vectorize(Return (Class::*f)(Args...) & noexcept) {
+    return Helper(std::mem_fn(f));
+}
+
+// Vectorize a class method (const, lvalue ref-qualified, noexcept):
+template <typename Return,
+          typename Class,
+          typename... Args,
+          typename Helper = detail::vectorize_helper<
+              decltype(std::mem_fn(std::declval<Return (Class::*)(Args...) const & noexcept>())),
+              Return,
+              const Class *,
+              Args...>>
+Helper vectorize(Return (Class::*f)(Args...) const & noexcept) {
+    return Helper(std::mem_fn(f));
+}
+#endif
 
 PYBIND11_NAMESPACE_END(PYBIND11_NAMESPACE)

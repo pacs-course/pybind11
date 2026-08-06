@@ -64,7 +64,7 @@ struct with_alias {
     with_alias &operator=(const with_alias &) = default;
     with_alias &operator=(with_alias &&) = default;
 };
-struct with_alias_alias : with_alias {};
+struct with_alias_alias : with_alias, py::trampoline_self_life_support {};
 struct sddwaa : std::default_delete<with_alias_alias> {};
 
 } // namespace class_sh_factory_constructors
@@ -108,10 +108,7 @@ TEST_SUBMODULE(class_sh_factory_constructors, m) {
         .def("get_mtxt", get_mtxt<atyp_shmp>);
 
     py::classh<atyp_shcp>(m, "atyp_shcp")
-        // py::class_<atyp_shcp, std::shared_ptr<atyp_shcp>>(m, "atyp_shcp")
-        // class_: ... must return a compatible ...
-        // classh: ... cannot pass object of non-trivial type ...
-        // .def(py::init(&rtrn_shcp))
+        .def(py::init(&rtrn_shcp))
         .def("get_mtxt", get_mtxt<atyp_shcp>);
 
     py::classh<atyp_uqmp>(m, "atyp_uqmp")
@@ -119,9 +116,7 @@ TEST_SUBMODULE(class_sh_factory_constructors, m) {
         .def("get_mtxt", get_mtxt<atyp_uqmp>);
 
     py::classh<atyp_uqcp>(m, "atyp_uqcp")
-        // class_: ... cannot pass object of non-trivial type ...
-        // classh: ... cannot pass object of non-trivial type ...
-        // .def(py::init(&rtrn_uqcp))
+        .def(py::init(&rtrn_uqcp))
         .def("get_mtxt", get_mtxt<atyp_uqcp>);
 
     py::classh<atyp_udmp>(m, "atyp_udmp")
@@ -129,10 +124,7 @@ TEST_SUBMODULE(class_sh_factory_constructors, m) {
         .def("get_mtxt", get_mtxt<atyp_udmp>);
 
     py::classh<atyp_udcp>(m, "atyp_udcp")
-        // py::class_<atyp_udcp, std::unique_ptr<atyp_udcp, sddc>>(m, "atyp_udcp")
-        // class_: ... must return a compatible ...
-        // classh: ... cannot pass object of non-trivial type ...
-        // .def(py::init(&rtrn_udcp))
+        .def(py::init(&rtrn_udcp))
         .def("get_mtxt", get_mtxt<atyp_udcp>);
 
     py::classh<with_alias, with_alias_alias>(m, "with_alias")

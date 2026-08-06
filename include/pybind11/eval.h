@@ -52,9 +52,8 @@ object eval(const str &expr, object global = globals(), object local = object())
 
     detail::ensure_builtins_in_globals(global);
 
-    /* PyRun_String does not accept a PyObject / encoding specifier,
-       this seems to be the only alternative */
-    std::string buffer = "# -*- coding: utf-8 -*-\n" + (std::string) expr;
+    // PyRun_String requires a plain C string; Python 3 always assumes UTF-8 source.
+    std::string buffer = (std::string) expr;
 
     int start = 0;
     switch (mode) {
@@ -133,7 +132,12 @@ object eval_file(str fname, object global = globals(), object local = object()) 
 
     int closeFile = 1;
     std::string fname_str = (std::string) fname;
-    FILE *f = _Py_fopen_obj(fname.ptr(), "r");
+    FILE *f =
+#    if PY_VERSION_HEX >= 0x030E0000
+        Py_fopen(fname.ptr(), "r");
+#    else
+        _Py_fopen_obj(fname.ptr(), "r");
+#    endif
     if (!f) {
         PyErr_Clear();
         pybind11_fail("File \"" + fname_str + "\" could not be opened!");

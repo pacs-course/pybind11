@@ -9,8 +9,6 @@
 
 #pragma once
 
-#define PYBIND11_HAS_TYPE_CASTER_STD_FUNCTION_SPECIALIZATIONS
-
 #include "pybind11.h"
 
 #include <functional>
@@ -22,13 +20,7 @@ PYBIND11_NAMESPACE_BEGIN(type_caster_std_function_specializations)
 // ensure GIL is held during functor destruction
 struct func_handle {
     function f;
-#if !(defined(_MSC_VER) && _MSC_VER == 1916 && defined(PYBIND11_CPP17))
-    // This triggers a syntax error under very special conditions (very weird indeed).
-    explicit
-#endif
-        func_handle(function &&f_) noexcept
-        : f(std::move(f_)) {
-    }
+    explicit func_handle(function &&f_) noexcept : f(std::move(f_)) {}
     func_handle(const func_handle &f_) { operator=(f_); }
     func_handle &operator=(const func_handle &f_) {
         gil_scoped_acquire acq;
@@ -50,7 +42,7 @@ struct func_wrapper_base {
 template <typename Return, typename... Args>
 struct func_wrapper : func_wrapper_base {
     using func_wrapper_base::func_wrapper_base;
-    Return operator()(Args... args) const {
+    Return operator()(Args... args) const { // NOLINT(performance-unnecessary-value-param)
         gil_scoped_acquire acq;
         // casts the returned object as a rvalue to the return type
         return hfunc.f(std::forward<Args>(args)...).template cast<Return>();
@@ -139,10 +131,9 @@ public:
 
     PYBIND11_TYPE_CASTER(
         type,
-        const_name("Callable[[")
-            + ::pybind11::detail::concat(::pybind11::detail::arg_descr(make_caster<Args>::name)...)
-            + const_name("], ") + ::pybind11::detail::return_descr(make_caster<retval_type>::name)
-            + const_name("]"));
+        const_name("collections.abc.Callable[[")
+            + ::pybind11::detail::concat(::pybind11::detail::inv_descr(make_caster<Args>::name)...)
+            + const_name("], ") + make_caster<retval_type>::name + const_name("]"));
 };
 
 PYBIND11_NAMESPACE_END(detail)
